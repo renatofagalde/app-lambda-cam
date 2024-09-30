@@ -1,0 +1,18 @@
+{
+  "VpcId": "vpc-0a427e3eeedef4537",
+  "SubnetIds": [
+    "subnet-0baab0cee2f2d446a",
+    "subnet-046fb5111452584b0"
+  ],
+  "SecurityGroupIds": [
+    "sg-035bba14e9e67fbba"
+  ],
+  "DatabaseEndpoint": "db-developer.abcdefgh.us-east-1.rds.amazonaws.com",
+  "DatabaseUser": "admin",
+  "DatabasePassword": "developer_password",
+  "LogGroup": "/aws/lambda/cam-log-group",
+  "LambdaS3Bucket": "likwi-lambdas-dev",
+  "LambdaS3Key": "app-lambda-cam.zip",
+  "LambdaFunctionName": "DeveloperLambdaFunction",
+  "LambdaExecutionRoleArn": "arn:aws:iam::012821307542:role/LambdaExecutionRole"
+}

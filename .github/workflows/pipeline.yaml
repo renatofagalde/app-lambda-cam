@@ -11,17 +11,16 @@ on:
       - 'feature/**'
 
 env:
+  STACK_NAME: APP-LAMBDA-CAM-STACK
   DEVELOPER_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
   DEVELOPER_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
   DEVELOPER_REGION: us-east-1
-  DEVELOPER_STACK_NAME: golang-app-developer-stack
   DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
   DEVELOPER_ENVIRONMENT_FILE: infra/environment/developer.json
 
   PRODUCTION_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
   PRODUCTION_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
   PRODUCTION_REGION: us-east-1
-  PRODUCTION_STACK_NAME: golang-app-production-stack
   PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
   PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
 
@@ -81,7 +80,7 @@ jobs:
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./main.zip s3://my-developer-bucket/main.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -99,7 +98,7 @@ jobs:
           stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
           aws cloudformation deploy \
             --template-file infra/cf-lambda.yaml \
-            --stack-name $stack_name \
+            --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
             --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
@@ -113,7 +112,7 @@ jobs:
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./main.zip s3://my-developer-bucket/main.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -130,7 +129,7 @@ jobs:
         run: |
           aws cloudformation package \
             --template-file infra/cf-lambda.yaml \
-            --s3-bucket my-developer-bucket \
+            --s3-bucket likwi-lambdas-dev \
             --output-template-file packaged-template.yaml \
             --region ${{ env.DEVELOPER_REGION }}
 
@@ -164,7 +163,7 @@ jobs:
         run: |
           aws cloudformation deploy \
             --template-file packaged-template.yaml \
-            --stack-name ${{ env.DEVELOPER_STACK_NAME }} \
+            --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
             --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
@@ -177,7 +176,7 @@ jobs:
 
       - name: Package and upload Lambda code (Production)
         run: |
-          aws s3 cp ./main.zip s3://my-production-bucket/main.zip --region ${{ env.PRODUCTION_REGION }}
+          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-prd/app-lambda-cam.zip --region ${{ env.PRODUCTION_REGION }}
 
       - name: Assume the Production pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -194,7 +193,7 @@ jobs:
         run: |
           aws cloudformation package \
             --template-file infra/cf-lambda.yaml \
-            --s3-bucket my-production-bucket \
+            --s3-bucket likwi-lambdas-prd \
             --output-template-file packaged-production.yaml \
             --region ${{ env.PRODUCTION_REGION }}
 
@@ -228,7 +227,7 @@ jobs:
         run: |
           aws cloudformation deploy \
             --template-file packaged-production.yaml \
-            --stack-name ${{ env.PRODUCTION_STACK_NAME }} \
+            --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.PRODUCTION_REGION }} \
             --parameter-overrides EnvironmentFile=${{ env.PRODUCTION_ENVIRONMENT_FILE }}
