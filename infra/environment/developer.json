@@ -1,9 +1,30 @@
-{
-  "VpcId": "vpc-0a427e3eeedef4537",
-  "SubnetIds": "subnet-0baab0cee2f2d446a,subnet-046fb5111452584b0",
-  "SecurityGroupIds": "sg-035bba14e9e67fbba",
-  "DatabaseEndpoint": "db-developer.abcdefgh.us-east-1.rds.amazonaws.com",
-  "DatabaseUser": "admin",
-  "DatabasePassword": "developer_password",
-  "LogGroup": "/aws/lambda/cam-log-group"
-}
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-0a427e3eeedef4537"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-0baab0cee2f2d446a,subnet-046fb5111452584b0"
+  },
+  {
+    "ParameterKey": "SecurityGroupIds",
+    "ParameterValue": "sg-035bba14e9e67fbba"
+  },
+  {
+    "ParameterKey": "DatabaseEndpoint",
+    "ParameterValue": "db-developer.abcdefgh.us-east-1.rds.amazonaws.com"
+  },
+  {
+    "ParameterKey": "DatabaseUser",
+    "ParameterValue": "admin"
+  },
+  {
+    "ParameterKey": "DatabasePassword",
+    "ParameterValue": "developer_password"
+  },
+  {
+    "ParameterKey": "LogGroup",
+    "ParameterValue": "/aws/lambda/cam-log-group"
+  }
+]
