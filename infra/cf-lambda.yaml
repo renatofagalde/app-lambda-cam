@@ -33,7 +33,7 @@ Parameters:
     Description: Nome do arquivo ZIP da Lambda armazenado no S3.
   LambdaFunctionName:
     Type: String
-    Default: "AppLambdaFunction"  # Nome padrão atualizado para AppLambdaFunction
+    Default: "AppLambdaFunction"
     Description: Nome da função Lambda.
   LambdaExecutionRoleArn:
     Type: String
@@ -54,8 +54,8 @@ Resources:
       MemorySize: 512
       Timeout: 60
       VpcConfig:
-        SecurityGroupIds: !Ref SecurityGroupIds
-        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds: !Split [",", !Ref SecurityGroupIds]  # Dividindo os SGs com vírgula
+        SubnetIds: !Split [",", !Ref SubnetIds]                # Dividindo as subnets com vírgula
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
