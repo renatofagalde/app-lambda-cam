@@ -54,8 +54,8 @@ Resources:
       MemorySize: 512
       Timeout: 60
       VpcConfig:
-        SecurityGroupIds: !Split [",", !Ref SecurityGroupIds]  # Dividindo os SGs com vírgula
-        SubnetIds: !Split [",", !Ref SubnetIds]                # Dividindo as subnets com vírgula
+        SecurityGroupIds: !Ref SecurityGroupIds  # IDs dos Security Groups como lista
+        SubnetIds: !Ref SubnetIds                # IDs das Subnets como lista
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
