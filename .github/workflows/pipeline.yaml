@@ -105,7 +105,7 @@ jobs:
             --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
+            --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
 
   build-and-package-developer:
     if: github.ref == 'refs/heads/develop'
