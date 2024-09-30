@@ -44,10 +44,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - name: Compile Lambda Code
+      - name: Run Go Tests
         run: |
-          GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
+          go mod tidy
+          go test ./...
 
   delete-feature:
     if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
@@ -80,13 +80,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Compile Lambda Code
+      - name: Prepare Go dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Go binary for Lambda
         run: |
           GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
 
       - name: Package and upload Lambda code (Developer)
         run: |
+          zip app-lambda-cam.zip main
           aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
@@ -117,13 +121,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Compile Lambda Code
+      - name: Prepare Go dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Go binary for Lambda
         run: |
           GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
 
       - name: Package and upload Lambda code (Developer)
         run: |
+          zip app-lambda-cam.zip main
           aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
@@ -186,13 +194,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Compile Lambda Code
+      - name: Prepare Go dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Go binary for Lambda
         run: |
           GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
 
       - name: Package and upload Lambda code (Production)
         run: |
+          zip app-lambda-cam.zip main
           aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-prd/app-lambda-cam.zip --region ${{ env.PRODUCTION_REGION }}
 
       - name: Assume the Production pipeline role
