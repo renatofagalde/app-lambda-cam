@@ -44,8 +44,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: |
-          # Trigger tests here
+      - name: Compile Lambda Code
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o main main.go
+          zip app-lambda-cam.zip main
 
   delete-feature:
     if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
@@ -78,6 +80,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Compile Lambda Code
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o main main.go
+          zip app-lambda-cam.zip main
+
       - name: Package and upload Lambda code (Developer)
         run: |
           aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
@@ -109,6 +116,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Compile Lambda Code
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o main main.go
+          zip app-lambda-cam.zip main
 
       - name: Package and upload Lambda code (Developer)
         run: |
@@ -173,6 +185,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Compile Lambda Code
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o main main.go
+          zip app-lambda-cam.zip main
 
       - name: Package and upload Lambda code (Production)
         run: |
