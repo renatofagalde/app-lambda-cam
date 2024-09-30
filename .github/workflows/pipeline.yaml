@@ -73,6 +73,10 @@ jobs:
           export AWS_SECRET_ACCESS_KEY=${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
           export AWS_REGION=${{ env.DEVELOPER_REGION }}
 
+      - name: Download dependencies
+        run: |
+          go mod tidy
+
       - name: Compile and build the Lambda binary
         run: |
           GOOS=linux GOARCH=amd64 go build -o main main.go
@@ -115,6 +119,10 @@ jobs:
           export AWS_ACCESS_KEY_ID=${{ env.DEVELOPER_ACCESS_KEY_ID }}
           export AWS_SECRET_ACCESS_KEY=${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
           export AWS_REGION=${{ env.DEVELOPER_REGION }}
+
+      - name: Download dependencies
+        run: |
+          go mod tidy
 
       - name: Compile and build the Lambda binary
         run: |
