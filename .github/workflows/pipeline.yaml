@@ -1,0 +1,234 @@
+name: Pipeline
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'develop'
+      - 'feature/**'
+  delete:
+    branches:
+      - 'feature/**'
+
+env:
+  DEVELOPER_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
+  DEVELOPER_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
+  DEVELOPER_REGION: us-east-1
+  DEVELOPER_STACK_NAME: golang-app-developer-stack
+  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
+  DEVELOPER_ENVIRONMENT_FILE: infra/environment/developer.json
+
+  PRODUCTION_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
+  PRODUCTION_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
+  PRODUCTION_REGION: us-east-1
+  PRODUCTION_STACK_NAME: golang-app-production-stack
+  PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
+  PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
+
+jobs:
+  log-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Print Event Information
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "GitHub Event Name: $EVENT_NAME"
+          echo "Pull Request Base Ref: $PR_BASE_REF"
+          echo "Head Ref: $HEAD_REF"
+
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          # Trigger tests here
+
+  delete-feature:
+    if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: feature-delete
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Delete feature branch stack
+        env:
+          FEATURE_BRANCH_NAME: ${{ github.event.ref }}
+        run: |
+          stack_name=$(echo ${FEATURE_BRANCH_NAME##*/} | tr -cd '[a-zA-Z0-9-]')
+          aws cloudformation delete-stack --stack-name $stack_name --region ${{ env.DEVELOPER_REGION }}
+
+  build-and-deploy-feature:
+    if: startsWith(github.ref, 'refs/heads/feature')
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Package and upload Lambda code (Developer)
+        run: |
+          aws s3 cp ./main.zip s3://my-developer-bucket/main.zip --region ${{ env.DEVELOPER_REGION }}
+
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: feature-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Deploy to Developer feature stack
+        run: |
+          stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
+          aws cloudformation deploy \
+            --template-file infra/cf-lambda.yaml \
+            --stack-name $stack_name \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.DEVELOPER_REGION }} \
+            --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
+
+  build-and-package-developer:
+    if: github.ref == 'refs/heads/develop'
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Package and upload Lambda code (Developer)
+        run: |
+          aws s3 cp ./main.zip s3://my-developer-bucket/main.zip --region ${{ env.DEVELOPER_REGION }}
+
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: developer-packaging
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Package CloudFormation stack (Developer)
+        run: |
+          aws cloudformation package \
+            --template-file infra/cf-lambda.yaml \
+            --s3-bucket my-developer-bucket \
+            --output-template-file packaged-template.yaml \
+            --region ${{ env.DEVELOPER_REGION }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: packaged-template.yaml
+          path: packaged-template.yaml
+
+  deploy-developer:
+    if: github.ref == 'refs/heads/develop'
+    needs: [ build-and-package-developer ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: packaged-template.yaml
+
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: developer-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Deploy to Developer stack
+        run: |
+          aws cloudformation deploy \
+            --template-file packaged-template.yaml \
+            --stack-name ${{ env.DEVELOPER_STACK_NAME }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.DEVELOPER_REGION }} \
+            --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
+
+  build-and-package-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Package and upload Lambda code (Production)
+        run: |
+          aws s3 cp ./main.zip s3://my-production-bucket/main.zip --region ${{ env.PRODUCTION_REGION }}
+
+      - name: Assume the Production pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-packaging
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Package CloudFormation stack (Production)
+        run: |
+          aws cloudformation package \
+            --template-file infra/cf-lambda.yaml \
+            --s3-bucket my-production-bucket \
+            --output-template-file packaged-production.yaml \
+            --region ${{ env.PRODUCTION_REGION }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: packaged-production.yaml
+          path: packaged-production.yaml
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: [ build-and-package-production ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: packaged-production.yaml
+
+      - name: Assume the Production pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Deploy to Production stack
+        run: |
+          aws cloudformation deploy \
+            --template-file packaged-production.yaml \
+            --stack-name ${{ env.PRODUCTION_STACK_NAME }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.PRODUCTION_REGION }} \
+            --parameter-overrides EnvironmentFile=${{ env.PRODUCTION_ENVIRONMENT_FILE }}
