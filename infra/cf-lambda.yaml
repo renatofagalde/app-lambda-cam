@@ -53,7 +53,7 @@ Resources:
       VpcConfig:
         SecurityGroupIds:
           - !Ref SecurityGroupIds
-        SubnetIds: !Split [",", !Ref SubnetIds]
+        SubnetIds: !Ref SubnetIds            # Removido o !Split, pois SubnetIds já é uma lista
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
