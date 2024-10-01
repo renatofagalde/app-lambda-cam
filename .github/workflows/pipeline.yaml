@@ -15,175 +15,50 @@ env:
   DEVELOPER_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
   DEVELOPER_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
   DEVELOPER_REGION: us-east-1
-  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
+  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::[DEVELOPER_ACCOUNT_ID]:role/DeveloperCrossAccountRole
   DEVELOPER_ENVIRONMENT_FILE: infra/environment/developer.json
 
   PRODUCTION_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
   PRODUCTION_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
   PRODUCTION_REGION: us-east-1
-  PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
+  PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::[PRODUCTION_ACCOUNT_ID]:role/CloudFormationExecutionRole
   PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
 
 jobs:
-  log-events:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Print Event Information
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_REF: ${{ github.ref }}
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          echo "GitHub Event Name: $EVENT_NAME"
-          echo "Pull Request Base Ref: $PR_BASE_REF"
-          echo "Head Ref: $HEAD_REF"
-
-  test:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: |
-          # Trigger tests here
-
-  delete-feature:
-    if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
+  deploy-cross-account:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Delete feature branch stack
-        env:
-          FEATURE_BRANCH_NAME: ${{ github.event.ref }}
-        run: |
-          stack_name=$(echo ${FEATURE_BRANCH_NAME##*/} | tr -cd '[a-zA-Z0-9-]')
-          aws cloudformation delete-stack --stack-name $stack_name --region ${{ env.DEVELOPER_REGION }}
-
-  build-and-deploy-feature:
-    if: startsWith(github.ref, 'refs/heads/feature')
-    needs: [ test ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set aws file credential
-        run: |
-          aws configure set aws_access_key_id ${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          aws configure set region ${{ env.DEVELOPER_REGION }}
-
-      - name: Download dependencies
-        run: |
-          go mod tidy
-
-      - name: Compile and build the Lambda binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
-
-      - name: Upload Lambda code to S3 (Developer)
-        run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }} --profile default
-
-      - name: Assume the Developer pipeline role for CloudFormation deployment
+      # Step 1: Assume CloudFormation Role in Root Account
+      - name: Assume CloudFormation Role in Root Account
         uses: aws-actions/configure-aws-credentials@v1
         with:
-          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.DEVELOPER_REGION }}
-          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
-          role-session-name: feature-deployment
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::[ROOT_ACCOUNT_ID]:role/CloudFormationExecutionRole
+          role-session-name: root-session
           role-duration-seconds: 3600
           role-skip-session-tagging: true
 
-      - name: Deploy to Developer feature stack
+      # Step 2: Assume DeveloperCrossAccountRole in Developer Account
+      - name: Assume DeveloperCrossAccountRole in Developer Account
         run: |
-          stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
+          ASSUMED_ROLE=$(aws sts assume-role \
+            --role-arn arn:aws:iam::[DEVELOPER_ACCOUNT_ID]:role/DeveloperCrossAccountRole \
+            --role-session-name developer-session \
+            --query "Credentials" --output json)
+          export AWS_ACCESS_KEY_ID=$(echo $ASSUMED_ROLE | jq -r '.AccessKeyId')
+          export AWS_SECRET_ACCESS_KEY=$(echo $ASSUMED_ROLE | jq -r '.SecretAccessKey')
+          export AWS_SESSION_TOKEN=$(echo $ASSUMED_ROLE | jq -r '.SessionToken')
+
+      # Step 3: Deploy CloudFormation in Developer Account
+      - name: Deploy CloudFormation in Developer Account
+        run: |
           aws cloudformation deploy \
             --template-file infra/cf-lambda.yaml \
             --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
-            --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
-
-  build-and-package-developer:
-    if: github.ref == 'refs/heads/develop'
-    needs: [ test ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Configure AWS credentials for direct S3 upload
-        run: |
-          export AWS_ACCESS_KEY_ID=${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          export AWS_SECRET_ACCESS_KEY=${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          export AWS_REGION=${{ env.DEVELOPER_REGION }}
-
-      - name: Download dependencies
-        run: |
-          go mod tidy
-
-      - name: Compile and build the Lambda binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
-
-      - name: Upload Lambda code to S3 (Developer)
-        run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
-
-      - name: Assume the Developer pipeline role for CloudFormation packaging
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.DEVELOPER_REGION }}
-          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
-          role-session-name: developer-packaging
-          role-duration-seconds: 3600
-          role-skip-session-tagging: true
-
-      - name: Package CloudFormation stack (Developer)
-        run: |
-          aws cloudformation package \
-            --template-file infra/cf-lambda.yaml \
-            --s3-bucket likwi-lambdas-dev \
-            --output-template-file packaged-template.yaml \
-            --region ${{ env.DEVELOPER_REGION }}
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: packaged-template.yaml
-          path: packaged-template.yaml
-
-  deploy-developer:
-    if: github.ref == 'refs/heads/develop'
-    needs: [ build-and-package-developer ]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-        with:
-          name: packaged-template.yaml
-
-      - name: Assume the Developer pipeline role
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.DEVELOPER_REGION }}
-          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
-          role-session-name: developer-deployment
-          role-duration-seconds: 3600
-          role-skip-session-tagging: true
-
-      - name: Deploy to Developer stack
-        run: |
-          aws cloudformation deploy \
-            --template-file packaged-template.yaml \
-            --stack-name ${{ env.STACK_NAME }} \
-            --capabilities CAPABILITY_IAM \
-            --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
-
+            --region us-east-1 \
+            --parameter-overrides file://infra/environment/developer.json

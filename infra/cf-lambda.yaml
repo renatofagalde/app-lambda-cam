@@ -1,64 +1,77 @@
-name: Pipeline
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template para criação de Lambda com VPC, subnets, e logs no CloudWatch.
 
-on:
-  push:
-    branches:
-      - 'main'
-      - 'develop'
-      - 'feature/**'
-  delete:
-    branches:
-      - 'feature/**'
+Parameters:
+  VpcId:
+    Type: String
+    Description: ID da VPC onde a Lambda será associada.
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: IDs das subnets onde a Lambda será associada.
+  SecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: IDs dos grupos de segurança para a Lambda.
+  DatabaseEndpoint:
+    Type: String
+    Description: Endpoint do banco de dados associado.
+  DatabaseUser:
+    Type: String
+    Description: Usuário do banco de dados.
+  DatabasePassword:
+    Type: String
+    Description: Senha do banco de dados.
+  LogGroup:
+    Type: String
+    Description: Nome do grupo de logs do CloudWatch.
+  LambdaS3Bucket:
+    Type: String
+    Default: "likwi-lambdas-dev"
+    Description: Nome do bucket S3 onde o arquivo da Lambda está armazenado.
+  LambdaS3Key:
+    Type: String
+    Default: "app-lambda-cam.zip"
+    Description: Nome do arquivo ZIP da Lambda armazenado no S3.
+  LambdaFunctionName:
+    Type: String
+    Default: "AppLambdaFunction"
+    Description: Nome da função Lambda.
+  LambdaExecutionRoleArn:
+    Type: String
+    Default: "arn:aws:iam::012821307542:role/LambdaExecutionRole"
+    Description: ARN da role de execução da Lambda.
 
-env:
-  STACK_NAME: APP-LAMBDA-CAM-STACK
-  DEVELOPER_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
-  DEVELOPER_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
-  DEVELOPER_REGION: us-east-1
-  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::[DEVELOPER_ACCOUNT_ID]:role/DeveloperCrossAccountRole
-  DEVELOPER_ENVIRONMENT_FILE: infra/environment/developer.json
+Resources:
+  AppLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName  # Nome parametrizado da função Lambda
+      Handler: main
+      Role: !Ref LambdaExecutionRoleArn      # ARN da role existente passado como parâmetro
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket       # Nome do bucket S3 vindo do parâmetro
+        S3Key: !Ref LambdaS3Key             # Nome do arquivo ZIP vindo do parâmetro
+      Runtime: go1.x
+      MemorySize: 512
+      Timeout: 60
+      VpcConfig:
+        SecurityGroupIds: !Split [",", !Ref SecurityGroupIds]  # Dividindo os SGs com vírgula
+        SubnetIds: !Split [",", !Ref SubnetIds]                # Dividindo as subnets com vírgula
+      Environment:
+        Variables:
+          DB_ENDPOINT: !Ref DatabaseEndpoint
+          DB_USER: !Ref DatabaseUser
+          DB_PASSWORD: !Ref DatabasePassword
 
-  PRODUCTION_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
-  PRODUCTION_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
-  PRODUCTION_REGION: us-east-1
-  PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::[PRODUCTION_ACCOUNT_ID]:role/CloudFormationExecutionRole
-  PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroup
+      RetentionInDays: 14
 
-jobs:
-  deploy-cross-account:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      # Step 1: Assume CloudFormation Role in Root Account
-      - name: Assume CloudFormation Role in Root Account
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-          role-to-assume: arn:aws:iam::[ROOT_ACCOUNT_ID]:role/CloudFormationExecutionRole
-          role-session-name: root-session
-          role-duration-seconds: 3600
-          role-skip-session-tagging: true
-
-      # Step 2: Assume DeveloperCrossAccountRole in Developer Account
-      - name: Assume DeveloperCrossAccountRole in Developer Account
-        run: |
-          ASSUMED_ROLE=$(aws sts assume-role \
-            --role-arn arn:aws:iam::[DEVELOPER_ACCOUNT_ID]:role/DeveloperCrossAccountRole \
-            --role-session-name developer-session \
-            --query "Credentials" --output json)
-          export AWS_ACCESS_KEY_ID=$(echo $ASSUMED_ROLE | jq -r '.AccessKeyId')
-          export AWS_SECRET_ACCESS_KEY=$(echo $ASSUMED_ROLE | jq -r '.SecretAccessKey')
-          export AWS_SESSION_TOKEN=$(echo $ASSUMED_ROLE | jq -r '.SessionToken')
-
-      # Step 3: Deploy CloudFormation in Developer Account
-      - name: Deploy CloudFormation in Developer Account
-        run: |
-          aws cloudformation deploy \
-            --template-file infra/cf-lambda.yaml \
-            --stack-name ${{ env.STACK_NAME }} \
-            --capabilities CAPABILITY_IAM \
-            --region us-east-1 \
-            --parameter-overrides file://infra/environment/developer.json
+Outputs:
+  LambdaArn:
+    Description: ARN da Lambda criada.
+    Value: !GetAtt AppLambdaFunction.Arn  # Refere-se ao recurso AppLambdaFunction
+  LogGroupName:
+    Description: Nome do grupo de logs associado à Lambda.
+    Value: !Ref LogGroup
