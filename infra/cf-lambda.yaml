@@ -53,14 +53,14 @@ Resources:
       Runtime: go1.x
       MemorySize: 512
       Timeout: 60
-    VpcConfig:
-      SecurityGroupIds: !Split [ ",", !Ref SecurityGroupIds ]
-      SubnetIds: !Split [ ",", !Ref SubnetIds ]
-    Environment:
-      Variables:
-        DB_ENDPOINT: !Ref DatabaseEndpoint
-        DB_USER: !Ref DatabaseUser
-        DB_PASSWORD: !Ref DatabasePassword
+      VpcConfig:                            # Definição correta da VPCConfig
+        SecurityGroupIds: !Split [ ",", !Ref SecurityGroupIds ]  # Dividindo os SGs com vírgula
+        SubnetIds: !Split [ ",", !Ref SubnetIds ]                # Dividindo as subnets com vírgula
+      Environment:
+        Variables:
+          DB_ENDPOINT: !Ref DatabaseEndpoint
+          DB_USER: !Ref DatabaseUser
+          DB_PASSWORD: !Ref DatabasePassword
 
   CloudWatchLogGroup:
     Type: AWS::Logs::LogGroup
