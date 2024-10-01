@@ -9,8 +9,8 @@ Parameters:
     Type: CommaDelimitedList
     Description: IDs das subnets onde a Lambda será associada.
   SecurityGroupIds:
-    Type: CommaDelimitedList
-    Description: IDs dos grupos de segurança para a Lambda.
+    Type: String  # Apenas um SecurityGroupId, não é mais uma lista
+    Description: ID do grupo de segurança para a Lambda.
   DatabaseEndpoint:
     Type: String
     Description: Endpoint do banco de dados associado.
@@ -53,9 +53,10 @@ Resources:
       Runtime: go1.x
       MemorySize: 512
       Timeout: 60
-      VpcConfig:                            # Definição correta da VPCConfig
-        SecurityGroupIds: !Split [ ",", !Ref SecurityGroupIds ]  # Dividindo os SGs com vírgula
-        SubnetIds: !Split [ ",", !Ref SubnetIds ]                # Dividindo as subnets com vírgula
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupIds            # Apenas um SecurityGroupId passado diretamente
+        SubnetIds: !Split [",", !Ref SubnetIds]  # Mantido como lista, pois há múltiplos Subnets
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
