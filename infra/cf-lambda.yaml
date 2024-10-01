@@ -2,14 +2,11 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Template para criação de Lambda com VPC, subnets, e logs no CloudWatch.
 
 Parameters:
-  VpcId:
-    Type: String
-    Description: ID da VPC onde a Lambda será associada.
   SubnetIds:
     Type: CommaDelimitedList
     Description: IDs das subnets onde a Lambda será associada.
   SecurityGroupIds:
-    Type: String  # Apenas um SecurityGroupId, não é mais uma lista
+    Type: String
     Description: ID do grupo de segurança para a Lambda.
   DatabaseEndpoint:
     Type: String
@@ -50,13 +47,13 @@ Resources:
       Code:
         S3Bucket: !Ref LambdaS3Bucket       # Nome do bucket S3 vindo do parâmetro
         S3Key: !Ref LambdaS3Key             # Nome do arquivo ZIP vindo do parâmetro
-      Runtime: go1.x
-      MemorySize: 512
+      Runtime: go1.21                       # Atualizado para usar o runtime go1.21
+      MemorySize: 128
       Timeout: 60
       VpcConfig:
         SecurityGroupIds:
-          - !Ref SecurityGroupIds            # Apenas um SecurityGroupId passado diretamente
-        SubnetIds: !Ref SubnetIds             # Passando SubnetIds diretamente, sem Split
+          - !Ref SecurityGroupIds
+        SubnetIds: !Split [",", !Ref SubnetIds]
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
