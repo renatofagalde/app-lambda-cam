@@ -45,13 +45,25 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: |
-          # Trigger tests here
+          # Adicione os testes da aplicação aqui
+          echo "Testes rodando"
 
   delete-feature:
     if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: feature-delete
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
       - name: Delete feature branch stack
         env:
@@ -67,26 +79,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set aws file credential
+      - name: Build Lambda for Feature (Developer)
         run: |
-          aws configure set aws_access_key_id ${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          aws configure set region ${{ env.DEVELOPER_REGION }}
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip app-lambda-cam.zip bootstrap
 
-      - name: Download dependencies
+      - name: Package and upload Lambda code (Developer)
         run: |
-          go mod tidy
+          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
-      - name: Compile and build the Lambda binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
-
-      - name: Upload Lambda code to S3 (Developer)
-        run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }} --profile default
-
-      - name: Assume the Developer pipeline role for CloudFormation deployment
+      - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
@@ -102,7 +104,7 @@ jobs:
           stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
           aws cloudformation deploy \
             --template-file infra/cf-lambda.yaml \
-            --stack-name ${{ env.STACK_NAME }} \
+            --stack-name $stack_name \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
             --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
@@ -114,26 +116,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configure AWS credentials for direct S3 upload
+      - name: Build Lambda for Developer
         run: |
-          export AWS_ACCESS_KEY_ID=${{ env.DEVELOPER_ACCESS_KEY_ID }}
-          export AWS_SECRET_ACCESS_KEY=${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
-          export AWS_REGION=${{ env.DEVELOPER_REGION }}
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip app-lambda-cam.zip bootstrap
 
-      - name: Download dependencies
-        run: |
-          go mod tidy
-
-      - name: Compile and build the Lambda binary
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o main main.go
-          zip app-lambda-cam.zip main
-
-      - name: Upload Lambda code to S3 (Developer)
+      - name: Package and upload Lambda code (Developer)
         run: |
           aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
 
-      - name: Assume the Developer pipeline role for CloudFormation packaging
+      - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
@@ -185,5 +177,73 @@ jobs:
             --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides EnvironmentFile=${{ env.DEVELOPER_ENVIRONMENT_FILE }}
+            --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
 
+  build-and-package-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build Lambda for Production
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip app-lambda-cam.zip bootstrap
+
+      - name: Package and upload Lambda code (Production)
+        run: |
+          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-prd/app-lambda-cam.zip --region ${{ env.PRODUCTION_REGION }}
+
+      - name: Assume the Production pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-packaging
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Package CloudFormation stack (Production)
+        run: |
+          aws cloudformation package \
+            --template-file infra/cf-lambda.yaml \
+            --s3-bucket likwi-lambdas-prd \
+            --output-template-file packaged-production.yaml \
+            --region ${{ env.PRODUCTION_REGION }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: packaged-production.yaml
+          path: packaged-production.yaml
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: [ build-and-package-production ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: packaged-production.yaml
+
+      - name: Assume the Production pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Deploy to Production stack
+        run: |
+          aws cloudformation deploy \
+            --template-file packaged-production.yaml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.PRODUCTION_REGION }} \
+            --parameter-overrides file://${{ env.PRODUCTION_ENVIRONMENT_FILE }}
