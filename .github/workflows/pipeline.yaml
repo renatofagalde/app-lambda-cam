@@ -79,14 +79,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Run go mod tidy to install dependencies
+        run: |
+          go mod tidy
+
       - name: Build Lambda for Feature (Developer)
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
-          zip app-lambda-cam.zip bootstrap
+          zip bootstrap.zip bootstrap
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -116,14 +120,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Run go mod tidy to install dependencies
+        run: |
+          go mod tidy
+
       - name: Build Lambda for Developer
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
-          zip app-lambda-cam.zip bootstrap
+          zip bootstrap.zip bootstrap
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-dev/app-lambda-cam.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -185,14 +193,18 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Run go mod tidy to install dependencies
+        run: |
+          go mod tidy
+
       - name: Build Lambda for Production
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
-          zip app-lambda-cam.zip bootstrap
+          zip bootstrap.zip bootstrap
 
       - name: Package and upload Lambda code (Production)
         run: |
-          aws s3 cp ./app-lambda-cam.zip s3://likwi-lambdas-prd/app-lambda-cam.zip --region ${{ env.PRODUCTION_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-prd/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
 
       - name: Assume the Production pipeline role
         uses: aws-actions/configure-aws-credentials@v1
