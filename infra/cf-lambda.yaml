@@ -56,7 +56,7 @@ Resources:
       VpcConfig:
         SecurityGroupIds:
           - !Ref SecurityGroupIds            # Apenas um SecurityGroupId passado diretamente
-        SubnetIds: !Split [",", !Ref SubnetIds]  # Mantido como lista, pois há múltiplos Subnets
+        SubnetIds: !Ref SubnetIds             # Passando SubnetIds diretamente, sem Split
       Environment:
         Variables:
           DB_ENDPOINT: !Ref DatabaseEndpoint
