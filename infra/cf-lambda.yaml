@@ -37,7 +37,7 @@ Parameters:
     Description: Nome da função Lambda.
   LambdaExecutionRoleArn:
     Type: String
-    Default: "arn:aws:iam::012821307542:role/LambdaExecutionRole"
+    Default: "arn:aws:iam::235494806410:role/LambdaExecutionRole"
     Description: ARN da role de execução da Lambda.
 
 Resources:
