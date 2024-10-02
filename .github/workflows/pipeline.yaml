@@ -96,7 +96,7 @@ jobs:
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/cam/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -144,7 +144,7 @@ jobs:
 
       - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/cam/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
@@ -224,7 +224,7 @@ jobs:
 
       - name: Package and upload Lambda code (Production)
         run: |
-          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-prd/cam/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-prd/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
 
       - name: Assume the Production pipeline role
         uses: aws-actions/configure-aws-credentials@v1
