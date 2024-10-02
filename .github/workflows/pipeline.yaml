@@ -45,7 +45,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: |
-          # Adicione os testes da aplicação aqui
           echo "Testes rodando"
 
   delete-feature:
@@ -88,6 +87,13 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
           zip bootstrap.zip bootstrap
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
+          aws-region: us-east-1
+
       - name: Package and upload Lambda code (Developer)
         run: |
           aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
@@ -128,6 +134,13 @@ jobs:
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
           zip bootstrap.zip bootstrap
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
+          aws-region: us-east-1
 
       - name: Package and upload Lambda code (Developer)
         run: |
@@ -201,6 +214,13 @@ jobs:
         run: |
           GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
           zip bootstrap.zip bootstrap
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
+          aws-region: us-east-1
 
       - name: Package and upload Lambda code (Production)
         run: |
