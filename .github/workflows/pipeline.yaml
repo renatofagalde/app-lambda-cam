@@ -25,10 +25,58 @@ env:
   PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
 
 jobs:
-  build-and-deploy-developer:
+  build-and-deploy-feature:
+    if: startsWith(github.ref, 'refs/heads/feature')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for Developer
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+
+      - name: Install dependencies
+        run: |
+          go mod tidy
+
+      - name: Build the Go executable
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+
+      - name: Package Lambda function
+        run: |
+          zip bootstrap.zip bootstrap
+
+      - name: Upload to S3 (Developer)
+        run: |
+          aws s3 cp bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+
+      - name: Deploy to Developer Feature Stack
+        run: |
+          # Gera um nome único para a stack
+          stack_name="${{ env.STACK_NAME }}-${GITHUB_RUN_ID}"
+          aws cloudformation deploy \
+            --template-file infra/cf-lambda.yaml \
+            --stack-name $stack_name \
+            --capabilities CAPABILITY_IAM \
+            --region ${{ env.DEVELOPER_REGION }} \
+            --parameter-overrides file://infra/environment/developer.json
+
+  build-and-deploy-developer:
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Configure AWS credentials for Developer
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
 
       - name: Install dependencies
         run: |
@@ -61,6 +109,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Configure AWS credentials for Production
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+
       - name: Install dependencies
         run: |
           go mod tidy
@@ -76,6 +131,12 @@ jobs:
       - name: Upload to S3 (Production)
         run: |
           aws s3 cp bootstrap.zip s3://likwi-lambdas-prd/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
+
+      - name: Delete Feature Stack (if exists)
+        run: |
+          # Gera o nome da stack temporária e apaga
+          stack_name="${{ env.STACK_NAME }}-${GITHUB_RUN_ID}"
+          aws cloudformation delete-stack --stack-name $stack_name --region ${{ env.DEVELOPER_REGION }}
 
       - name: Deploy to Production Stack
         run: |
