@@ -15,7 +15,7 @@ env:
   DEVELOPER_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
   DEVELOPER_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
   DEVELOPER_REGION: us-east-1
-  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::012821307542:role/CloudFormationExecutionRole
+  DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE: arn:aws:iam::235494806410:role/CloudFormationExecutionRole
   DEVELOPER_ENVIRONMENT_FILE: infra/environment/developer.json
 
   PRODUCTION_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
@@ -25,124 +25,257 @@ env:
   PRODUCTION_ENVIRONMENT_FILE: infra/environment/production.json
 
 jobs:
-  build-and-deploy-feature:
-    if: startsWith(github.ref, 'refs/heads/feature')
+  log-events:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Print Event Information
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_REF: ${{ github.ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "GitHub Event Name: $EVENT_NAME"
+          echo "Pull Request Base Ref: $PR_BASE_REF"
+          echo "Head Ref: $HEAD_REF"
+
+  test:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          echo "Testes rodando"
+
+  delete-feature:
+    if: startsWith(github.event.ref, 'feature') && github.event_name == 'delete'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configure AWS credentials for Developer
+      - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: feature-delete
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
-      - name: Install dependencies
+      - name: Delete feature branch stack
+        env:
+          FEATURE_BRANCH_NAME: ${{ github.event.ref }}
+        run: |
+          stack_name=$(echo ${FEATURE_BRANCH_NAME##*/} | tr -cd '[a-zA-Z0-9-]')
+          aws cloudformation delete-stack --stack-name $stack_name --region ${{ env.DEVELOPER_REGION }}
+
+  build-and-deploy-feature:
+    if: startsWith(github.ref, 'refs/heads/feature')
+    needs: [ test ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run go mod tidy to install dependencies
         run: |
           go mod tidy
 
-      - name: Build the Go executable
+      - name: Build Lambda for Feature (Developer)
         run: |
-          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go  # Executável como bootstrap
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip bootstrap.zip bootstrap
 
-      - name: Package Lambda function
-        run: |
-          zip bootstrap.zip bootstrap  # ZIP como bootstrap.zip
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
+          aws-region: us-east-1
 
-      - name: Upload to S3 (Developer)
+      - name: Package and upload Lambda code (Developer)
         run: |
-          aws s3 cp bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/cam/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
-      - name: Deploy to Developer Feature Stack
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: feature-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
+
+      - name: Deploy to Developer feature stack
         run: |
-          # Gera um nome único para a stack
-          stack_name="${{ env.STACK_NAME }}-${GITHUB_RUN_ID}"
+          stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
           aws cloudformation deploy \
             --template-file infra/cf-lambda.yaml \
             --stack-name $stack_name \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides file://infra/environment/developer.json
+            --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
 
-  build-and-deploy-developer:
+  build-and-package-developer:
     if: github.ref == 'refs/heads/develop'
+    needs: [ test ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configure AWS credentials for Developer
+      - name: Run go mod tidy to install dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Lambda for Developer
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip bootstrap.zip bootstrap
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
+          aws-region: us-east-1
+
+      - name: Package and upload Lambda code (Developer)
+        run: |
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/cam/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+
+      - name: Assume the Developer pipeline role
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: developer-packaging
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
-      - name: Install dependencies
+      - name: Package CloudFormation stack (Developer)
         run: |
-          go mod tidy
+          aws cloudformation package \
+            --template-file infra/cf-lambda.yaml \
+            --s3-bucket likwi-lambdas-dev \
+            --output-template-file packaged-template.yaml \
+            --region ${{ env.DEVELOPER_REGION }}
 
-      - name: Build the Go executable
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go  # Executável como bootstrap
+      - uses: actions/upload-artifact@v3
+        with:
+          name: packaged-template.yaml
+          path: packaged-template.yaml
 
-      - name: Package Lambda function
-        run: |
-          zip bootstrap.zip bootstrap  # ZIP como bootstrap.zip
+  deploy-developer:
+    if: github.ref == 'refs/heads/develop'
+    needs: [ build-and-package-developer ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: packaged-template.yaml
 
-      - name: Upload to S3 (Developer)
-        run: |
-          aws s3 cp bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
+      - name: Assume the Developer pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.DEVELOPER_REGION }}
+          role-to-assume: ${{ env.DEVELOPER_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: developer-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
-      - name: Deploy to Developer Stack
+      - name: Deploy to Developer stack
         run: |
           aws cloudformation deploy \
-            --template-file infra/cf-lambda.yaml \
+            --template-file packaged-template.yaml \
             --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.DEVELOPER_REGION }} \
-            --parameter-overrides file://infra/environment/developer.json
+            --parameter-overrides file://${{ env.DEVELOPER_ENVIRONMENT_FILE }}
 
-  build-and-deploy-production:
+  build-and-package-production:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configure AWS credentials for Production
+      - name: Run go mod tidy to install dependencies
+        run: |
+          go mod tidy
+
+      - name: Build Lambda for Production
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go
+          zip bootstrap.zip bootstrap
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PRODUCTION }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PRODUCTION }}
+          aws-region: us-east-1
+
+      - name: Package and upload Lambda code (Production)
+        run: |
+          aws s3 cp ./bootstrap.zip s3://likwi-lambdas-prd/cam/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
+
+      - name: Assume the Production pipeline role
         uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-packaging
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
-      - name: Install dependencies
+      - name: Package CloudFormation stack (Production)
         run: |
-          go mod tidy
+          aws cloudformation package \
+            --template-file infra/cf-lambda.yaml \
+            --s3-bucket likwi-lambdas-prd \
+            --output-template-file packaged-production.yaml \
+            --region ${{ env.PRODUCTION_REGION }}
 
-      - name: Build the Go executable
-        run: |
-          GOOS=linux GOARCH=amd64 go build -o bootstrap main.go  # Executável como bootstrap
+      - uses: actions/upload-artifact@v3
+        with:
+          name: packaged-production.yaml
+          path: packaged-production.yaml
 
-      - name: Package Lambda function
-        run: |
-          zip bootstrap.zip bootstrap  # ZIP como bootstrap.zip
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    needs: [ build-and-package-production ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          name: packaged-production.yaml
 
-      - name: Upload to S3 (Production)
-        run: |
-          aws s3 cp bootstrap.zip s3://likwi-lambdas-prd/bootstrap.zip --region ${{ env.PRODUCTION_REGION }}
+      - name: Assume the Production pipeline role
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ env.PRODUCTION_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.PRODUCTION_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.PRODUCTION_REGION }}
+          role-to-assume: ${{ env.PRODUCTION_CLOUDFORMATION_EXECUTION_ROLE }}
+          role-session-name: production-deployment
+          role-duration-seconds: 3600
+          role-skip-session-tagging: true
 
-      - name: Delete Feature Stack (if exists)
-        run: |
-          # Gera o nome da stack temporária e apaga
-          stack_name="${{ env.STACK_NAME }}-${GITHUB_RUN_ID}"
-          aws cloudformation delete-stack --stack-name $stack_name --region ${{ env.DEVELOPER_REGION }}
-
-      - name: Deploy to Production Stack
+      - name: Deploy to Production stack
         run: |
           aws cloudformation deploy \
-            --template-file infra/cf-lambda.yaml \
+            --template-file packaged-production.yaml \
             --stack-name ${{ env.STACK_NAME }} \
             --capabilities CAPABILITY_IAM \
             --region ${{ env.PRODUCTION_REGION }} \
-            --parameter-overrides file://infra/environment/production.json
+            --parameter-overrides file://${{ env.PRODUCTION_ENVIRONMENT_FILE }}
