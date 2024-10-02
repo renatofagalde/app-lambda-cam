@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template para criação de Lambda com VPC, subnets, e logs no CloudWatch.
+
+Parameters:
+  SubnetIds:
+    Type: CommaDelimitedList
+    Description: IDs das subnets onde a Lambda será associada.
+  SecurityGroupIds:
+    Type: String
+    Description: ID do grupo de segurança para a Lambda.
+  DatabaseEndpoint:
+    Type: String
+    Description: Endpoint do banco de dados associado.
+  DatabaseUser:
+    Type: String
+    Description: Usuário do banco de dados.
+  DatabasePassword:
+    Type: String
+    Description: Senha do banco de dados.
+  LogGroup:
+    Type: String
+    Description: Nome do grupo de logs do CloudWatch.
+  LambdaS3Bucket:
+    Type: String
+    Default: "likwi-lambdas-dev"
+    Description: Nome do bucket S3 onde o arquivo da Lambda está armazenado.
+  LambdaS3Key:
+    Type: String
+    Default: "bootstrap.zip"
+    Description: Caminho do arquivo ZIP da Lambda armazenado no S3.
+  LambdaFunctionName:
+    Type: String
+    Default: "AppLambdaFunction"
+    Description: Nome da função Lambda.
+  LambdaExecutionRoleArn:
+    Type: String
+    Default: "arn:aws:iam::235494806410:role/LambdaExecutionRole"
+    Description: ARN da role de execução da Lambda.
+
+Resources:
+  AppLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName  # Nome parametrizado da função Lambda
+      Handler: bootstrap                     # Handler atualizado para usar o "bootstrap"
+      Role: !Ref LambdaExecutionRoleArn      # ARN da role existente passado como parâmetro
+      Code:
+        S3Bucket: !Ref LambdaS3Bucket        # Nome do bucket S3 vindo do parâmetro
+        S3Key: !Ref LambdaS3Key              # Caminho do arquivo ZIP atualizado
+      Runtime: provided.al2023               # Atualizado para o runtime "provided.al2023"
+      MemorySize: 128
+      Timeout: 60
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref SecurityGroupIds
+        SubnetIds: !Ref SubnetIds
+      Environment:
+        Variables:
+          DB_ENDPOINT: !Ref DatabaseEndpoint
+          DB_USER: !Ref DatabaseUser
+          DB_PASSWORD: !Ref DatabasePassword
+
+  CloudWatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref LogGroup
+      RetentionInDays: 14
+
+Outputs:
+  LambdaArn:
+    Description: ARN da Lambda criada.
+    Value: !GetAtt AppLambdaFunction.Arn  # Refere-se ao recurso AppLambdaFunction
+  LogGroupName:
+    Description: Nome do grupo de logs associado à Lambda.
+    Value: !Ref LogGroup

@@ -1,0 +1,18 @@
+{
+  "VpcId": "vpc-yyyyyy",
+  "SubnetIds": [
+    "subnet-aaaaaaa",
+    "subnet-bbbbbbb"
+  ],
+  "SecurityGroupIds": [
+    "sg-yyyyyyy"
+  ],
+  "DatabaseEndpoint": "db-production.abcdefgh.us-east-1.rds.amazonaws.com",
+  "DatabaseUser": "admin",
+  "DatabasePassword": "production_password",
+  "LogGroup": "/aws/lambda/cam-log-group",
+  "LambdaS3Bucket": "likwi-lambdas-prd",
+  "LambdaS3Key": "app-lambda-cam.zip",
+  "LambdaFunctionName": "ProductionLambdaFunction",
+  "LambdaExecutionRoleArn": "arn:aws:iam::012821307542:role/LambdaExecutionRole"
+}
