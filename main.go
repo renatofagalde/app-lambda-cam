@@ -23,7 +23,7 @@ func Handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	}
 
 	// Criar a resposta com o nome do diretório
-	response := fmt.Sprintf("O diretório corrente é: %s <--", filepath.Base(currentDir))
+	response := fmt.Sprintf("--> O diretório corrente é: %s <--", filepath.Base(currentDir))
 
 	// Retornar a resposta para o API Gateway
 	return events.APIGatewayProxyResponse{
