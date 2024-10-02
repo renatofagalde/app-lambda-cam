@@ -88,7 +88,7 @@ jobs:
           zip bootstrap.zip bootstrap
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
@@ -99,7 +99,7 @@ jobs:
           aws s3 cp ./bootstrap.zip s3://likwi-lambdas-dev/bootstrap.zip --region ${{ env.DEVELOPER_REGION }}
 
       - name: Assume the Developer pipeline role
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
@@ -110,7 +110,10 @@ jobs:
           role-skip-session-tagging: true
 
       - name: Deploy to Developer feature stack
+        shell: bash
         run: |
+          echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]'
+          echo ${FEATURE_BRANCH_NAME##*/} | tr -cd '[a-zA-Z0-9-]'       
           stack_name=$(echo ${GITHUB_REF##*/} | tr -cd '[a-zA-Z0-9-]')
           aws cloudformation deploy \
             --template-file infra/cf-lambda.yaml \
@@ -136,7 +139,7 @@ jobs:
           zip bootstrap.zip bootstrap
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEVELOPER }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEVELOPER }}
@@ -181,7 +184,7 @@ jobs:
           name: packaged-template.yaml
 
       - name: Assume the Developer pipeline role
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ env.DEVELOPER_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ env.DEVELOPER_SECRET_ACCESS_KEY }}
